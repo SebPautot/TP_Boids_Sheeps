@@ -1,4 +1,18 @@
-﻿# TPBoids_Sheeps
+﻿# Ajouts du fork
+
+- Complétion de l'exercice.
+- Ce fork ajoute le calcul de l'évitement de SheepHerds entre-eux. Ils se considèrent mutuellement comme prédateurs et vont tenter de s'éloigner les uns des autres.
+- Calcul de la position moyenne dans le herd déplacé dans le herd à des fins d'optimisation, le calcul était effectué à chaque tick par chaque boid et menait au même résultat.
+- Calls en lien avec la simulation déplacées sur le tick physique.
+
+## Améliorations possibles
+
+- Paramétrisation des ajouts au niveau des Herds.
+
+- Réduction des opérations entre boids, la simulation est fluide jusqu'à 100 boids par herd mais certaines parties scalent encore en O(n) pour n boids ce qui est problématique, néanmoins pas de soucis au niveau des herds étant donné qu'elles sont naturellement moins nombreuses que les boids.
+
+
+# TPBoids_Sheeps
 
 ## Objectif
 

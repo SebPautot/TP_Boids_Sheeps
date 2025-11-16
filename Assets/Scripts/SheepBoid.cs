@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -17,12 +18,7 @@ public class SheepBoid : MonoBehaviour
     /// </summary>
     Vector3 velocity;
 
-    Transform predator;
-
-    void Start()
-    {
-        predator = GameObject.FindGameObjectWithTag("Predator").transform;
-    }
+    public SheepHerd herd;
 
     /// <summary>
     /// 3.1
@@ -32,7 +28,7 @@ public class SheepBoid : MonoBehaviour
     /// <returns>Weight of the rule</returns>
     float P(float x)
     {
-        return 0;
+        return (1 / Mathf.PI) * Mathf.Atan(x / 0.3f) + 0.5f;
     }
 
     /// <summary>
@@ -45,7 +41,7 @@ public class SheepBoid : MonoBehaviour
     /// <returns>Combined weights</returns>
     float CombineWeight(float mult1, float mult2, float x)
     {
-        return 0;
+        return mult1 + mult1 * P(x) * mult2;
     }
 
     /// <summary>
@@ -58,7 +54,9 @@ public class SheepBoid : MonoBehaviour
     /// <returns></returns>
     float Inv(float x, float s)
     {
-        return 0;
+        if (x == 0 || s == 0) return 0;
+
+        return Mathf.Pow((x / s) + Mathf.Epsilon, -2.0f);
     }
 
     /// <summary>
@@ -71,7 +69,7 @@ public class SheepBoid : MonoBehaviour
     /// <returns>coh(s) the cohesion vector</returns>
     Vector3 RuleCohesion()
     {
-        return Vector3.zero;
+        return (herd.averageHerd - transform.position).normalized;
     }
 
     /// <summary>
@@ -87,7 +85,20 @@ public class SheepBoid : MonoBehaviour
     /// <returns>sep(s) the separation vector</returns>
     Vector3 RuleSeparation()
     {
-        return Vector3.zero;
+        Vector3 v = Vector3.zero;
+        foreach (SheepBoid sheepBoid in herd.sheeps)
+        {
+            if (sheepBoid == this) continue;
+
+            var v1 = sheepBoid.transform.position - transform.position;
+            var v2 = v1.normalized * Inv(v1.magnitude, 1.0f);
+
+            if (v2.x == float.NaN || v2.y == float.NaN || v2.z == float.NaN)
+                continue;
+
+            v += v2;
+        }
+        return v;
     }
 
     /// <summary>
@@ -104,7 +115,25 @@ public class SheepBoid : MonoBehaviour
     /// <returns>ali(s) the alignement vector</returns>
     Vector3 RuleAlignment()
     {
-        return Vector3.zero;
+        Vector3 v = Vector3.zero;
+        int i = 0;
+        foreach (SheepBoid sheepBoid in herd.sheeps)
+        {
+            if (sheepBoid == this) continue;
+
+            Vector3 dist_vec = sheepBoid.transform.position - transform.position;
+            float dist_pow = dist_vec.x * dist_vec.x + dist_vec.y * dist_vec.y;
+
+            if (dist_pow > 50 * 50) continue;
+
+            v += sheepBoid.velocity;
+            i += 1;
+        }
+
+        if (i == 0)
+            return Vector3.zero;
+
+        return v / i;
     }
 
     /// <summary>
@@ -118,7 +147,7 @@ public class SheepBoid : MonoBehaviour
     /// <returns>esc(s) the escape vector</returns>
     Vector3 RuleEscape()
     {
-        return Vector3.zero;
+        return (herd.predator - transform.position).normalized * Inv(distanceToPredator, 10.0f);
     }
 
     /// <summary>
@@ -128,31 +157,48 @@ public class SheepBoid : MonoBehaviour
     /// <returns>The resulting vector of all the rules</returns>
     Vector3 ApplyRules()
     {
-        Vector3 v = Vector3.zero;
+        var v = Vector3.zero;
+        v += RuleCohesion() * CombineWeight(weightCohesionBase, weightCohesionFear, distanceToPredator);
+        v += RuleSeparation() * CombineWeight(weightSeparation, weightSeparationFear, distanceToPredator);
+        v += RuleAlignment() * CombineWeight(weightAlignement, weightAlignementFear, distanceToPredator);
+        v += RuleEscape() * weightEscape;
         return v;
     }
 
-    void Update()
+    void FixedUpdate()
     {
         targetVelocity = ApplyRules();
+        Move();
     }
 
     #region Move
 
+    [SerializeField] float flightZoneRadius = 7;
+    //Velocity under which the sheep do not move
+    [SerializeField] float minVelocity = 0.1f;
+    //Max velocity of the sheep
+    [SerializeField] float maxVelocityBase = 1;
+    //Max velocity of the sheep when a predator is close
+    [SerializeField] float maxVelocityFear = 4;
+
+    float distanceToPredator = 0;
+
+    [SerializeField] float weightCohesionBase = 0.5f;
+    [SerializeField] float weightCohesionFear = 5.0f;
+
+    [SerializeField] float weightSeparation = 2f;
+    [SerializeField] float weightSeparationFear = 0f;
+
+    [SerializeField] float weightAlignement = 0.1f;
+    [SerializeField] float weightAlignementFear = 1f;
+    [SerializeField] float weightEscape = 6f;
+    [SerializeField] bool clampToGround = true;
     /// <summary>
     /// Move the sheep based on the result of the rules
     /// </summary>
     void Move()
     {
-        float flightZoneRadius = 7;
-        //Velocity under which the sheep do not move
-        float minVelocity = 0.1f;
-        //Max velocity of the sheep
-        float maxVelocityBase = 1;
-        //Max velocity of the sheep when a predator is close
-        float maxVelocityFear = 4;
-
-        float distanceToPredator = (transform.position - predator.position).magnitude;
+        distanceToPredator = (transform.position - herd.predator).magnitude;
 
         //Clamp the velocity to a maximum that depends on the distance to the predator
         float currentMaxVelocity = Mathf.Lerp(maxVelocityBase, maxVelocityFear, 1 - (distanceToPredator / flightZoneRadius));
@@ -161,23 +207,19 @@ public class SheepBoid : MonoBehaviour
 
         //Ignore the velocity if it's too small
         if (targetVelocity.magnitude < minVelocity)
-            targetVelocity = Vector3.zero;
+            return;
 
         //Draw the velocity as a blue line coming from the sheep in the scene view
         Debug.DrawRay(transform.position, targetVelocity, Color.blue);
 
         velocity = targetVelocity;
 
-        //Make sure we don't move the sheep verticaly by misstake
-        velocity.y = 0;
+        //Make sure we don't move the sheep verticaly by mistake
+        if(clampToGround)
+            velocity.y = 0;
 
         //Move the sheep
-        transform.Translate(velocity * Time.deltaTime, Space.World);
-    }
-
-    void LateUpdate()
-    {
-        Move();
+        transform.Translate(velocity * Time.fixedDeltaTime, Space.World);
     }
     #endregion
 }
